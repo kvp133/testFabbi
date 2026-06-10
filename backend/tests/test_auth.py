@@ -83,6 +83,48 @@ async def test_expired_access_token_is_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_duplicate_email_register_rejected(client: AsyncClient):
+    """Registering with an existing email must fail."""
+    payload = {"email": "dupe@example.com", "password": "password123"}
+    first = await client.post("/api/v1/auth/register", json=payload)
+    assert first.status_code == 201
+
+    second = await client.post("/api/v1/auth/register", json=payload)
+    assert second.status_code == 400, second.text
+    assert "already" in second.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_email_case_insensitive(client: AsyncClient):
+    """Email comparison must be case-insensitive."""
+    first = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "case@example.com", "password": "password123"},
+    )
+    assert first.status_code == 201
+
+    second = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "CASE@example.COM", "password": "password123"},
+    )
+    assert second.status_code == 400, second.text
+
+
+@pytest.mark.asyncio
+async def test_login_normalizes_email_case(client: AsyncClient):
+    """Login with different email casing should still succeed."""
+    await client.post(
+        "/api/v1/auth/register",
+        json={"email": "mixed@example.com", "password": "password123"},
+    )
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "Mixed@Example.COM", "password": "password123"},
+    )
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
 async def test_logout(client: AsyncClient):
     """Test logout endpoint."""
     # Register and get token
