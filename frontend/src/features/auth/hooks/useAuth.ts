@@ -21,14 +21,10 @@ export function useAuth() {
   });
 
   const logout = () => {
+    // Session cleanup (tokens + react-query cache) happens in the
+    // mutation's onSettled, so we only need to navigate here.
     logoutMutation.mutate(undefined, {
-      onSuccess: () => {
-        navigate("/login");
-      },
-      onError: () => {
-        // Even on error, clear local tokens and redirect
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+      onSettled: () => {
         navigate("/login");
       },
     });
