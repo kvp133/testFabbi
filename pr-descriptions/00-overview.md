@@ -15,8 +15,8 @@ cosmetic cleanup, as the assessment brief instructs.
 > AI assistance disclosure: Claude Code (Opus 4.7) was used for codebase
 > exploration, bug triage, and draft generation of fixes, tests, and PR
 > descriptions. All findings and the final implementation choices were
-> reviewed before commit. The `.claude/` configuration is committed under
-> the assessment ground rules.
+> reviewed before commit. Full disclosure of what was used and how lives
+> in [`CLAUDE.md`](../CLAUDE.md) at the repo root.
 
 ---
 
