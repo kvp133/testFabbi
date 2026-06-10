@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { queryClient } from "@/lib/queryClient";
 
 interface LoginRequest {
   email: string;
@@ -43,14 +44,24 @@ export function useRegister() {
   });
 }
 
+function clearUserSession() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  // Drop every cached query so the next user's session never sees the
+  // previous user's todos or profile.
+  queryClient.clear();
+}
+
 export function useLogout() {
   return useMutation({
     mutationFn: async () => {
       await api.post("/auth/logout");
     },
-    onSuccess: () => {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
+    // Run on both success and error: the server-side call is best-effort
+    // (the JWT remains valid until expiry anyway), but the client-side
+    // session must be wiped either way.
+    onSettled: () => {
+      clearUserSession();
     },
   });
 }

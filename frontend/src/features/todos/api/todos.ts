@@ -32,9 +32,16 @@ interface UpdateTodoRequest {
 }
 
 
+export const todoKeys = {
+  all: ["todos"] as const,
+  lists: () => [...todoKeys.all, "list"] as const,
+  list: (params: { page: number; size: number }) =>
+    [...todoKeys.lists(), params] as const,
+};
+
 export function useTodos(page: number = 1, size: number = 10000) {
   return useQuery({
-    queryKey: ["todos"],
+    queryKey: todoKeys.list({ page, size }),
     queryFn: async (): Promise<TodoListResponse> => {
       const response = await api.get("/todos", {
         params: { page, size },
@@ -51,7 +58,7 @@ export function useCreateTodo() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      queryClient.invalidateQueries({ queryKey: todoKeys.all });
       toast.success("Todo created successfully!");
     },
     onError: () => {
@@ -74,29 +81,32 @@ export function useUpdateTodo() {
       return response.data;
     },
     onMutate: async ({ id, data }) => {
-      // Cancel outgoing queries
-      await queryClient.cancelQueries({ queryKey: ["todos"] });
+      // Cancel any outgoing list queries so they don't overwrite our optimistic write
+      await queryClient.cancelQueries({ queryKey: todoKeys.lists() });
 
-      // Snapshot previous value
-      const previousTodos = queryClient.getQueryData<TodoListResponse>(["todos"]);
+      // Snapshot every cached list page so we can restore on error
+      const previousLists = queryClient.getQueriesData<TodoListResponse>({
+        queryKey: todoKeys.lists(),
+      });
 
-      // Optimistically update
-      if (previousTodos) {
-        queryClient.setQueryData<TodoListResponse>(["todos"], {
-          ...previousTodos,
-          items: previousTodos.items.map((todo) =>
+      // Apply the optimistic update to every cached list page
+      previousLists.forEach(([key, list]) => {
+        if (!list) return;
+        queryClient.setQueryData<TodoListResponse>(key, {
+          ...list,
+          items: list.items.map((todo) =>
             todo.id === id ? { ...todo, ...data } : todo
           ),
         });
-      }
+      });
 
-      return { previousTodos };
+      return { previousLists };
     },
     onError: () => {
       toast.error("Failed to update todo");
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      queryClient.invalidateQueries({ queryKey: todoKeys.all });
     },
   });
 }
@@ -107,7 +117,7 @@ export function useDeleteTodo() {
       await api.delete(`/todos/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["todos"] });
+      queryClient.invalidateQueries({ queryKey: todoKeys.all });
       toast.success("Todo deleted successfully!");
     },
     onError: () => {
