@@ -74,6 +74,18 @@ class _FakeRedis:
     async def exists(self, key: str) -> int:
         return 1 if key in self.store else 0
 
+    async def delete_pattern(self, pattern: str) -> int:
+        # Simple glob support: only the trailing "*" wildcard, which is all
+        # the production code uses for cache invalidation today.
+        if pattern.endswith("*"):
+            prefix = pattern[:-1]
+            keys = [k for k in self.store if k.startswith(prefix)]
+        else:
+            keys = [k for k in self.store if k == pattern]
+        for k in keys:
+            del self.store[k]
+        return len(keys)
+
 
 _fake_redis = _FakeRedis()
 

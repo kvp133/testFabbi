@@ -23,6 +23,24 @@ router = APIRouter()
 CACHE_TTL = 300  # 5 minutes
 
 
+def todos_list_cache_key(user_id: uuid.UUID, page: int, size: int) -> str:
+    """Cache key for /todos list.
+
+    Must include user_id so one user never reads another user's list,
+    and page/size so different pagination windows don't collide.
+    """
+    return f"user:{user_id}:todos:list:p{page}:s{size}"
+
+
+def todos_user_cache_pattern(user_id: uuid.UUID) -> str:
+    """Glob pattern matching all cached todo list pages for a user."""
+    return f"user:{user_id}:todos:list:*"
+
+
+async def invalidate_user_todos_cache(redis: RedisClient, user_id: uuid.UUID) -> None:
+    await redis.delete_pattern(todos_user_cache_pattern(user_id))
+
+
 @router.get("", response_model=TodoListResponse)
 async def list_todos(
     page: int = Query(1, ge=1),
@@ -34,7 +52,7 @@ async def list_todos(
     """Get paginated list of todos."""
     skip = (page - 1) * size
 
-    cache_key = "todos:list"
+    cache_key = todos_list_cache_key(current_user.id, page, size)
 
     # Try to get from cache
     cached = await redis.get(cache_key)
@@ -79,9 +97,11 @@ async def create_new_todo(
     todo_data: TodoCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
 ):
     """Create a new todo item."""
     todo = await create_todo(db, todo_data, current_user.id)
+    await invalidate_user_todos_cache(redis, current_user.id)
     return todo
 
 
@@ -131,6 +151,7 @@ async def update_existing_todo(
 
     updated_todo = await update_todo(db, todo, {})
 
+    await invalidate_user_todos_cache(redis, current_user.id)
     return updated_todo
 
 
@@ -151,4 +172,5 @@ async def delete_existing_todo(
 
     await delete_todo(db, todo)
 
+    await invalidate_user_todos_cache(redis, current_user.id)
     return None
