@@ -34,5 +34,17 @@ class RedisClient:
     async def exists(self, key: str) -> bool:
         return await self._redis.exists(key)
 
+    async def delete_pattern(self, pattern: str) -> int:
+        """Delete all keys matching a glob pattern using SCAN.
+
+        SCAN is used instead of KEYS so the call does not block Redis on
+        large keyspaces. Returns the number of keys deleted.
+        """
+        deleted = 0
+        async for key in self._redis.scan_iter(match=pattern):
+            await self._redis.delete(key)
+            deleted += 1
+        return deleted
+
 
 redis_client = RedisClient()
