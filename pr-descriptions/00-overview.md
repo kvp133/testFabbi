@@ -127,10 +127,11 @@ cosmetic cleanup, as the assessment brief instructs.
 
 ## Fixes implemented
 
-Seven fixes were shipped on dedicated branches. Each one is described in its
+Eight fixes were shipped on dedicated branches. Each one is described in its
 own file in this directory and lives on a branch named per the assessment
-rule (`bugfix/...`). The selection covers two auth fixes, one authorization
-fix, one cache fix, two frontend fixes, and one DB fix.
+rule (`bugfix/...`). The selection covers three auth fixes, one authorization
+fix, one cache fix, two frontend fixes, and one DB fix — closing every
+🔴 Critical issue identified during the audit.
 
 | #   | Branch                                | Layer         | Issues addressed | PR description                                        |
 | --- | ------------------------------------- | ------------- | ---------------- | ----------------------------------------------------- |
@@ -141,14 +142,15 @@ fix, one cache fix, two frontend fixes, and one DB fix.
 | 5   | `bugfix/frontend-cache-isolation`     | Frontend      | F1, F2           | [`05-frontend-cache-isolation.md`](./05-frontend-cache-isolation.md) |
 | 6   | `bugfix/frontend-optimistic-rollback` | Frontend      | F3, F4           | [`06-frontend-optimistic-rollback.md`](./06-frontend-optimistic-rollback.md) |
 | 7   | `bugfix/users-email-uniqueness`       | DB            | D1, D6           | [`07-users-email-uniqueness.md`](./07-users-email-uniqueness.md) |
+| 8   | `bugfix/logout-token-revocation`      | Auth          | S3               | [`08-logout-token-revocation.md`](./08-logout-token-revocation.md) |
 
 ### Selection rationale
 
-- **Auth (S1, S2)** are picked over S3 (logout revocation) because without
-  S1/S2 even a properly revoked token would be ineffective: tokens never
-  expire, and the access/refresh distinction is meaningless. Fixing the
-  underlying claims model is the precondition for any further session
-  hygiene work.
+- **Auth (S1, S2, S3)** all ship. S1 (expiration) and S2 (token type) had
+  to land first because without them even a properly revoked token would
+  be ineffective — tokens never expire, and the access/refresh distinction
+  is meaningless. S3 (logout revocation, shipped in PR #8) sits on top
+  of that foundation and adds an explicit blocklist via Redis.
 - **Authorization (A1+A2+A3)** are shipped as a single fix because they
   share one root cause — `get_todo_by_id` filters only by id. Splitting them
   would have produced three near-identical PRs.
@@ -168,7 +170,6 @@ fix, one cache fix, two frontend fixes, and one DB fix.
 
 | Skipped         | Why                                                                                                                       |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| S3 (logout no-op) | Requires a JTI blocklist + Redis schema decisions; depends on S1/S2 landing first. Worth a follow-up PR.                |
 | S5 (env secret) | Operational fix, not a code fix; better handled in a deploy checklist than a code PR.                                     |
 | S6 (CORS)       | One-line config change; trivial to add in a follow-up.                                                                    |
 | D3, D4, D5, D8  | Performance / schema hygiene; significant but lower priority than data isolation and authentication for an MVP review.    |
@@ -202,6 +203,7 @@ Alembic migration: `docker compose exec backend alembic upgrade head`.
 | `bugfix/frontend-cache-isolation`     | tsc ✅ | No frontend test runner in the project                      |
 | `bugfix/frontend-optimistic-rollback` | tsc ✅ | No frontend test runner in the project                      |
 | `bugfix/users-email-uniqueness`       | 7 ✅  | +3 tests covering duplicate / case-insensitive / mixed-case login; new Alembic migration applied successfully to live Postgres |
+| `bugfix/logout-token-revocation`      | 11 ✅ | +2 tests for access / refresh revocation; conftest gains an in-memory FakeRedis preserving state across requests |
 
 ---
 
