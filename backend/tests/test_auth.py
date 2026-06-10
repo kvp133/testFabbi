@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from httpx import AsyncClient
 
-from app.core.security import create_access_token
+from app.core.security import create_access_token, create_refresh_token
 
 
 @pytest.mark.asyncio
@@ -83,6 +83,23 @@ async def test_expired_access_token_is_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_refresh_token_rejected_at_protected_endpoint(client: AsyncClient):
+    """A refresh token must not be accepted as an access token."""
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "type@example.com", "password": "password123"},
+    )
+    assert reg.status_code == 201
+    refresh = reg.json()["refresh_token"]
+
+    response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {refresh}"},
+    )
+    assert response.status_code == 401, response.text
+
+
+@pytest.mark.asyncio
 async def test_duplicate_email_register_rejected(client: AsyncClient):
     """Registering with an existing email must fail."""
     payload = {"email": "dupe@example.com", "password": "password123"}
@@ -122,6 +139,19 @@ async def test_login_normalizes_email_case(client: AsyncClient):
         json={"email": "Mixed@Example.COM", "password": "password123"},
     )
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.asyncio
+async def test_forged_refresh_token_rejected(client: AsyncClient):
+    """Even a freshly minted refresh token (with valid signature) is rejected."""
+    forged = create_refresh_token(
+        data={"sub": "00000000-0000-0000-0000-000000000001"}
+    )
+    response = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {forged}"},
+    )
+    assert response.status_code == 401, response.text
 
 
 @pytest.mark.asyncio
