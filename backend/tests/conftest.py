@@ -1,7 +1,6 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -36,6 +35,7 @@ def event_loop():
 async def setup_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    _fake_redis.store.clear()
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -51,12 +51,35 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+class _FakeRedis:
+    """In-memory async stand-in for RedisClient used by the test suite.
+
+    Behaves like a real key/value store across requests so the JTI
+    blocklist (set on /auth/logout, checked in get_current_user) can be
+    exercised end-to-end.
+    """
+
+    def __init__(self) -> None:
+        self.store: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> None:
+        self.store[key] = value
+
+    async def delete(self, key: str) -> None:
+        self.store.pop(key, None)
+
+    async def exists(self, key: str) -> int:
+        return 1 if key in self.store else 0
+
+
+_fake_redis = _FakeRedis()
+
+
 def override_get_redis():
-    mock_redis = MagicMock()
-    mock_redis.get = AsyncMock(return_value=None)
-    mock_redis.set = AsyncMock()
-    mock_redis.delete = AsyncMock()
-    return mock_redis
+    return _fake_redis
 
 
 app.dependency_overrides[get_db] = override_get_db
