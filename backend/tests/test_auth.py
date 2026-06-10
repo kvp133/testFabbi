@@ -75,3 +75,50 @@ async def test_logout(client: AsyncClient):
     )
     assert response.status_code == 200
     assert response.json()["message"] == "Successfully logged out"
+
+
+@pytest.mark.asyncio
+async def test_access_token_revoked_after_logout(client: AsyncClient):
+    """After /auth/logout the access token must no longer authenticate."""
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "revoke@example.com", "password": "password123"},
+    )
+    access = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access}"}
+
+    # Sanity: token works before logout
+    me_before = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_before.status_code == 200
+
+    logout = await client.post("/api/v1/auth/logout", headers=headers)
+    assert logout.status_code == 200
+
+    me_after = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_after.status_code == 401, me_after.text
+    assert "revoked" in me_after.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_revoked_after_logout(client: AsyncClient):
+    """Logout with refresh_token body must also revoke the refresh token."""
+    reg = await client.post(
+        "/api/v1/auth/register",
+        json={"email": "rev-refresh@example.com", "password": "password123"},
+    )
+    access = reg.json()["access_token"]
+    refresh = reg.json()["refresh_token"]
+
+    logout = await client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {access}"},
+        json={"refresh_token": refresh},
+    )
+    assert logout.status_code == 200
+
+    response = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh},
+    )
+    assert response.status_code == 401, response.text
+    assert "revoked" in response.json()["detail"].lower()

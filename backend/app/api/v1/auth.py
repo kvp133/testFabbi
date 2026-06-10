@@ -1,9 +1,17 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_redis
+from app.api.deps import get_current_user, get_redis, security_scheme
 from app.core.redis import RedisClient
-from app.core.security import create_access_token, create_refresh_token, verify_token
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    revoked_token_key,
+    verify_token,
+)
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import (
@@ -89,6 +97,13 @@ async def refresh_token(
             detail="Invalid refresh token",
         )
 
+    jti = payload.get("jti")
+    if jti and await redis.exists(revoked_token_key(jti)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+        )
+
     user_id = payload.get("sub")
     access_token = create_access_token(data={"sub": user_id})
     refresh_token = create_refresh_token(data={"sub": user_id})
@@ -101,10 +116,34 @@ async def refresh_token(
 
 @router.post("/logout")
 async def logout(
+    request: RefreshTokenRequest | None = None,
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     current_user: User = Depends(get_current_user),
+    redis: RedisClient = Depends(get_redis),
 ):
-    """Logout user."""
+    """Logout user by revoking the access token (and refresh token if provided).
+
+    Adds each token's JTI to a Redis blocklist with a TTL equal to the
+    token's remaining lifetime. get_current_user consults the blocklist
+    on every authenticated request.
+    """
+    await _revoke_token(redis, credentials.credentials)
+    if request is not None and request.refresh_token:
+        await _revoke_token(redis, request.refresh_token)
     return {"message": "Successfully logged out"}
+
+
+async def _revoke_token(redis: RedisClient, token: str) -> None:
+    payload = verify_token(token)
+    if payload is None:
+        return
+    jti = payload.get("jti")
+    exp = payload.get("exp")
+    if not jti or not exp:
+        return
+    remaining = int(exp - time.time())
+    if remaining > 0:
+        await redis.set(revoked_token_key(jti), "1", ex=remaining)
 
 
 @router.get("/me", response_model=UserResponse)

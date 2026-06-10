@@ -26,11 +26,16 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-    to_encode.update({"exp": expire, "type": "access"})
+    to_encode.update({"exp": expire, "type": "access", "jti": str(uuid.uuid4())})
     encoded_jwt = jwt.encode(
         to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM
     )
     return encoded_jwt
+
+
+def revoked_token_key(jti: str) -> str:
+    """Redis key for revoking a JWT by its JTI."""
+    return f"revoked:jti:{jti}"
 
 
 def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
