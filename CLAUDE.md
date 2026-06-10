@@ -1,17 +1,4 @@
-# AI Tooling Disclosure
 
-This file satisfies the README requirement to commit "all resources and
-configurations related to the coding agents you used (such as
-`Claude.md`, `.agents`, `.claude`, `.cursor`, etc.) and any custom
-instructions or documentation you defined for the AI."
-
-## Tools used
-
-| Tool        | Version / model                   | Purpose                                                                                                       |
-| ----------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Claude Code | Anthropic CLI, model Opus 4.7 (1M context) | End-to-end pair-programming during the assessment: codebase exploration, bug audit, draft of fixes/tests/PR descriptions |
-
-No other AI assistants (Cursor, Copilot, ChatGPT, Cline, etc.) were used.
 
 ## How it was used
 
