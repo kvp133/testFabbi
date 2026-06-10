@@ -32,6 +32,8 @@ interface UpdateTodoRequest {
 }
 
 
+export const DEFAULT_TODOS_PAGE_SIZE = 20;
+
 export const todoKeys = {
   all: ["todos"] as const,
   lists: () => [...todoKeys.all, "list"] as const,
@@ -39,7 +41,10 @@ export const todoKeys = {
     [...todoKeys.lists(), params] as const,
 };
 
-export function useTodos(page: number = 1, size: number = 10000) {
+export function useTodos(
+  page: number = 1,
+  size: number = DEFAULT_TODOS_PAGE_SIZE,
+) {
   return useQuery({
     queryKey: todoKeys.list({ page, size }),
     queryFn: async (): Promise<TodoListResponse> => {
@@ -84,12 +89,11 @@ export function useUpdateTodo() {
       // Cancel any outgoing list queries so they don't overwrite our optimistic write
       await queryClient.cancelQueries({ queryKey: todoKeys.lists() });
 
-      // Snapshot every cached list page so we can restore on error
+      // Snapshot every cached list page so we can restore on failure.
       const previousLists = queryClient.getQueriesData<TodoListResponse>({
         queryKey: todoKeys.lists(),
       });
 
-      // Apply the optimistic update to every cached list page
       previousLists.forEach(([key, list]) => {
         if (!list) return;
         queryClient.setQueryData<TodoListResponse>(key, {
@@ -102,7 +106,11 @@ export function useUpdateTodo() {
 
       return { previousLists };
     },
-    onError: () => {
+    onError: (_err, _vars, context) => {
+      // Roll back every page we touched.
+      context?.previousLists.forEach(([key, list]) => {
+        if (list) queryClient.setQueryData(key, list);
+      });
       toast.error("Failed to update todo");
     },
     onSettled: () => {
